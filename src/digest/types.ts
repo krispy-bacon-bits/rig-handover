@@ -9,7 +9,7 @@ export type DigestRow = {
   runs: number;
   retries: number;
   lastStatus: RunStatus;
-  lastError: string | null; // null: the last line carried no error
+  lastError: string | null; // most recent error on any of the job's lines, kept after a later ok. null: no line had one
   firstAt: string;
   lastAt: string;
 };

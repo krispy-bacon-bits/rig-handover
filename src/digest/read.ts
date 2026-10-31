@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { DigestRow, Night, ReadNight, RunStatus } from './types.js';
+import type { CountNight, DigestRow, Night, NightCounts, ReadNight, RunStatus } from './types.js';
 
 // Plan morning-digest § 1. One row per job from runs/<night>.jsonl.
 
@@ -69,34 +69,52 @@ function toRow(job: string, lines: Line[]): DigestRow {
   };
 }
 
-export const readNight: ReadNight = (runsDir, night): Night => {
-  if (!NIGHT.test(night)) return { found: false };
+// Shared by readNight and countNight, so there is one reader and one parser.
+function readLines(runsDir: string, night: string): { lines: Line[]; badLines: number } | null {
+  if (!NIGHT.test(night)) return null;
 
   let text: string;
   try {
     text = readFileSync(join(runsDir, `${night}.jsonl`), 'utf8');
   } catch (err) {
-    if (isRecord(err) && err.code === 'ENOENT') return { found: false };
+    if (isRecord(err) && err.code === 'ENOENT') return null;
     throw err;
   }
 
-  const byJob = new Map<string, Line[]>();
+  const lines: Line[] = [];
   let badLines = 0;
   text.split(/\r?\n/).forEach((t, seq) => {
     if (t.trim() === '') return;
     const line = parseLine(t, seq);
-    if (!line) {
-      badLines++;
-      return;
-    }
+    if (line) lines.push(line);
+    else badLines++;
+  });
+  return { lines, badLines };
+}
+
+export const readNight: ReadNight = (runsDir, night): Night => {
+  const read = readLines(runsDir, night);
+  if (!read) return { found: false };
+
+  const byJob = new Map<string, Line[]>();
+  for (const line of read.lines) {
     const list = byJob.get(line.job);
     if (list) list.push(line);
     else byJob.set(line.job, [line]);
-  });
+  }
 
   const rows = [...byJob.entries()]
     .map(([job, lines]) => toRow(job, lines))
     .sort((a, b) => (a.job < b.job ? -1 : a.job > b.job ? 1 : 0));
 
-  return { found: true, rows, badLines };
+  return { found: true, rows, badLines: read.badLines };
+};
+
+// Parsed lines by status. Lines that do not parse are not counted here.
+export const countNight: CountNight = (runsDir, night): NightCounts | null => {
+  const read = readLines(runsDir, night);
+  if (!read) return null;
+  const counts: NightCounts = { ok: 0, retry: 0, fail: 0 };
+  for (const line of read.lines) counts[line.status]++;
+  return counts;
 };

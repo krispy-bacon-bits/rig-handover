@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readNight } from '../src/digest/read.js';
+import { countNight, readNight } from '../src/digest/read.js';
 import type { DigestRow, Night } from '../src/digest/types.js';
 
 function rowsOf(night: Night): { rows: DigestRow[]; badLines: number } {
@@ -119,5 +119,37 @@ describe('readNight edge cases', () => {
     expect(r.lastAt).toBe('2026-01-04T02:00:00+01:00');
     expect(r.lastStatus).toBe('ok');
     expect(r.lastError).toBe('boom');
+  });
+});
+
+describe('countNight', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'rig-runs-'));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('counts parsed lines by status on runs/2026-10-28.jsonl', () => {
+    expect(countNight('runs', '2026-10-28')).toEqual({ ok: 10, retry: 4, fail: 1 });
+  });
+
+  it('returns null for a night with no file or a bad name', () => {
+    expect(countNight(dir, '2026-01-01')).toBeNull();
+    expect(countNight(dir, '../x')).toBeNull();
+  });
+
+  it('does not count lines that do not parse', () => {
+    writeFileSync(
+      join(dir, '2026-01-05.jsonl'),
+      ['{"at":"2026-01-05T01:00:00Z","job":"a","status":"ok"}', 'garbage', '{"at":"2026-01-05T02:00:00Z","job":"a","status":"fail"}'].join('\n'),
+    );
+    expect(countNight(dir, '2026-01-05')).toEqual({ ok: 1, retry: 0, fail: 1 });
+  });
+
+  it('returns zeros for an empty night', () => {
+    writeFileSync(join(dir, '2026-01-06.jsonl'), '');
+    expect(countNight(dir, '2026-01-06')).toEqual({ ok: 0, retry: 0, fail: 0 });
   });
 });

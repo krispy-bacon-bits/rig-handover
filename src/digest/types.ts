@@ -23,3 +23,9 @@ export type Night =
 // Implemented in src/digest/read.ts (issue #2), exported as readNight.
 // Rows come back sorted by job, so the page and the JSON can never disagree.
 export type ReadNight = (runsDir: string, night: string) => Night;
+
+// Parsed log lines by status for one night. Lines that did not parse are not counted.
+export type NightCounts = { ok: number; retry: number; fail: number };
+
+// Implemented in src/digest/read.ts (issue #5). null: readNight would say not found.
+export type CountNight = (runsDir: string, night: string) => NightCounts | null;
